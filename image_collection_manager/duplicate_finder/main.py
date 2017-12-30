@@ -4,7 +4,7 @@ import itertools
 import diskcache
 
 from .hashes import ahash, phash
-from util import collect_images
+from image_collection_manager.util import collect_images
 
 logger = logging.getLogger(__name__)
 

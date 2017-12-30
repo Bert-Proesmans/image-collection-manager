@@ -11,6 +11,6 @@ setup(
     ],
     entry_points='''
         [console_scripts]
-        image-collection-manager=scripts:cli
+        image-collection-manager=image_collection_manager.scripts:cli
     ''',
 )

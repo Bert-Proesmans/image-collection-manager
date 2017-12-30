@@ -5,7 +5,7 @@ import shutil
 
 from PIL import Image
 
-from util import collect_images
+from image_collection_manager.util import collect_images
 
 DEFAULT_RATIOS = (
     (1.0 / 1, 'square'),
@@ -122,5 +122,12 @@ def organize_images(path_list: list, recurse: bool, target_dir: Path, copy):
             shutil.copy(old_path, new_path)
             logger.info('Copied image `{}` to `{}`'.format(old_path, new_path))
         else:
-            img_path.rename(new_path)
-            logger.warning('Moved image `{}` to `{}`'.format(old_path, new_path))
+            try:
+                img_path.rename(new_path)
+                logger.warning('Moved image `{}` to `{}`'.format(old_path, new_path))
+            except:
+                try:
+                    img_path.replace(new_path)
+                    logger.warning('Replaced image at `{}` with `{}`'.format(new_path, old_path))
+                except:
+                    logger.exception('Couldn\'t move the file')
