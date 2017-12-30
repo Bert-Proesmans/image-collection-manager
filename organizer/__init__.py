@@ -1,1 +1,1 @@
-from .main import organize_duplicates
+from .main import organize_duplicates, organize_images
