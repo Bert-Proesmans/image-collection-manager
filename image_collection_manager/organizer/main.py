@@ -4,6 +4,7 @@ from math import isclose
 import shutil
 
 from PIL import Image
+import click
 
 from image_collection_manager.util import collect_images
 
@@ -46,18 +47,42 @@ def organize_duplicates(items: list, target_dir: Path = None):
         # Move all duplicates into the dup_dir (including a rename)
         # This iterator will process all elements after the first (see next(..) when assigning item_subj
         for i, dup_path in dups:
-            target_path = Path(dup_dir) / (subj_name + '_dup_' + str(i) + subj_suffix)
             old_path = str(dup_path)
-            # Move the duplicate image into the dup folder
-            dup_path.rename(target_path)
-            logger.warning('Moved duplicate `{}` to `{}`'.format(old_path, str(dup_path)))
+            # Auto icnrease dup counter for convenience, but hard limit the increment to 10.
+            # If 10 increases are not enough the duplicate is NOT moved and a message is shown.
+            j = i
+            while j < (i + 10):
+                target_path = Path(dup_dir) / (subj_name + '_dup_' + str(j) + subj_suffix)
+                try:
+                    # Move the duplicate image into the dup folder
+                    dup_path.rename(target_path)
+                    logger.warning('Moved duplicate `{}` to `{}`'.format(old_path, str(target_path)))
+                    break
+                except:
+                    # The file possibly already exists
+                    j += 1
+            # Something bad happened, so we report it..
+            if j == (i + 10):
+                msg = 'Couldn\'t move duplicate file `{}` into duplicates folder, it\'s still in the original location!' \
+                    .format(old_path)
+                logger.error(msg)
 
 
 def _retrieve_output_path(dirs: dict, ratio: float, img_height: int, def_ratios: tuple, def_heights: tuple):
     # Calculate ratio and height to use (rounded upwards)
+    # For example: ratio 1.778 -> 1.777; 1.776 -> 1.777
+    target_ratio, ratio_name = next(
+        (i for i in reversed(def_ratios) if isclose(i[0], ratio, rel_tol=1e-03) or i[0] < ratio), None)
     # For example: height 480<X<=720 will be organized into height 720
-    target_ratio, ratio_name = next((i for i in reversed(def_ratios) if isclose(i[0], ratio)), None)
     target_height = next((i for i in def_heights if i >= img_height), None)
+
+    if not target_ratio:
+        # Image has higher ratio than defined
+        target_ratio = 'ratio unkn'
+
+    if not target_height:
+        # Image is higher than maximum defined
+        target_height = 'Massive'
 
     # Find the precalculated path, if any..
     # The paths are constructed by the following template:
@@ -92,6 +117,9 @@ def organize_images(path_list: list, recurse: bool, target_dir: Path, copy):
     # Will contain all move operations
     move_ops = []
 
+    # TODO; Replace with progress indicator
+    logger.info('Working..')
+
     # Process all images
     for img_path in images:
         img = Image.open(img_path)
@@ -119,6 +147,7 @@ def organize_images(path_list: list, recurse: bool, target_dir: Path, copy):
             continue
 
         if copy:
+            # Overwrites by default!
             shutil.copy(old_path, new_path)
             logger.info('Copied image `{}` to `{}`'.format(old_path, new_path))
         else:
@@ -127,7 +156,9 @@ def organize_images(path_list: list, recurse: bool, target_dir: Path, copy):
                 logger.warning('Moved image `{}` to `{}`'.format(old_path, new_path))
             except:
                 try:
-                    img_path.replace(new_path)
-                    logger.warning('Replaced image at `{}` with `{}`'.format(new_path, old_path))
+                    msg = 'Target file `{}` possibly exist, overwrite?'.format(new_path)
+                    if click.confirm(msg, abort=True):  # Allow aborting the program if the user wanted to
+                        img_path.replace(new_path)
+                        logger.warning('Replaced image at `{}` with `{}`'.format(new_path, old_path))
                 except:
                     logger.exception('Couldn\'t move the file')

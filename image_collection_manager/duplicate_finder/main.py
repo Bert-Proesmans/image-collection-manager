@@ -65,7 +65,12 @@ def do_filter_images(path_list: list, recurse: bool, cache: diskcache.FanoutCach
     :param cache:
     :return:
     """
+    logger.info('Using cache directory: {}'.format(cache.directory))
     images = collect_images(path_list, recurse)
+
+    # TODO; Replace with progress indicator
+    logger.info('Working..')
+
     # Here it might be possible to split work accross threads
     _first_pass_filter(images, cache)
     duplicate_images = _collect_duplicate_paths_first(images, cache)
