@@ -63,8 +63,8 @@ def organize_duplicates(items: list, target_dir: Path = None):
                     j += 1
             # Something bad happened, so we report it..
             if j == (i + 10):
-                msg = 'Couldn\'t move duplicate file `{}` into duplicates folder, it\'s still in the original location!' \
-                    .format(old_path)
+                msg = 'Couldn\'t move duplicate file `{}` into duplicates folder with name prefix `{}`, it\'s still in' \
+                      'the original location!'.format(old_path, subj_name + '_dup_')
                 logger.error(msg)
 
 
