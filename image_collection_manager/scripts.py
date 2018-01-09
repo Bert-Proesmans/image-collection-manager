@@ -4,6 +4,9 @@ import sys
 import contextlib
 import pathlib
 import tempfile
+import multiprocessing
+from multiprocessing.util import Finalize
+from pathlib import Path
 
 import click
 import diskcache
@@ -25,7 +28,7 @@ def _setup_cache(location: pathlib.Path, **kwargs):
         if not location:
             # Construct new cache location in temp folder
             location = pathlib.Path(tempfile.gettempdir())
-            location = location / 'image-collection_manager'
+            location = location / 'image_collection_manager'
 
         cache_obj = diskcache.FanoutCache(str(location), **kwargs)
         yield cache_obj
@@ -34,9 +37,7 @@ def _setup_cache(location: pathlib.Path, **kwargs):
             cache_obj.close()
 
 
-@click.group(invoke_without_command=False, context_settings=CONTEXT_SETTINGS)
-@click.pass_context
-def cli(ctx):
+def _setup_logging():
     # Initialise logging
     logging.basicConfig(level=logging.WARNING, stream=sys.stdout,
                         # Or use filename='log.txt'
@@ -45,6 +46,12 @@ def cli(ctx):
     logging.getLogger('image_collection_manager.duplicate_finder').setLevel(logging.INFO)
     logging.getLogger('image_collection_manager.organizer').setLevel(logging.INFO)
     logger.setLevel(logging.INFO)
+
+
+@click.group(invoke_without_command=False, context_settings=CONTEXT_SETTINGS)
+@click.pass_context
+def cli(ctx):
+    _setup_logging()
 
     # Initialise file kind detection
     mimetypes.init()
@@ -77,6 +84,32 @@ def filter_duplicates(ctx, sources, recurse, hash_verify, dup_dir, cache_dir):
         logger.info('Found {} images which have at least one duplicate'.format(len(duplicates)))
         organize_duplicates(duplicates, dup_dir)
         logger.info('Filtering duplicates finished!')
+
+
+def _proper_exit_generator(context_manager_exit: callable):
+    def call_exit():
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        context_manager_exit(exc_type, exc_value, exc_traceback)
+
+    return call_exit
+
+
+def _multiprocessing_filter_entry(cache_dir: Path, hash_verification: bool):
+    from image_collection_manager.duplicate_finder.main import set_global_verify_hash, set_global_cache_object
+    # Setup all context managers to simulate the environment of the original process
+    worker_id = multiprocessing.current_process().name
+    _setup_logging()
+
+    cache_cm = _setup_cache(cache_dir, tag_index=True)
+    cache_res = cache_cm.__enter__()
+
+    set_global_verify_hash(hash_verification)
+    set_global_cache_object(cache_res)
+
+    # AND register a cleanup after work is finished by this worker
+    exit_cb = _proper_exit_generator(cache_cm.__exit__)
+    Finalize(cache_cm, exit_cb, exitpriority=16)
+    logger.info("Worker `{}` initialized".format(worker_id))
 
 
 @cli.command('organize')

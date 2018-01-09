@@ -1,5 +1,8 @@
+import os
 import logging
 import itertools
+from multiprocessing import Pool
+from pathlib import Path
 
 import diskcache
 
@@ -8,12 +11,29 @@ from image_collection_manager.util import collect_images, file_digest
 
 logger = logging.getLogger(__name__)
 
+# Global object representing the cache
+# This is necessary because of multiprocessing
+_CACHE = None
+_VERIFY_HASH = False
 
-def _collect_duplicate_paths_first(all_paths: list, cache: diskcache.FanoutCache):
+
+def set_global_cache_object(cache: diskcache.FanoutCache):
+    global _CACHE
+    _CACHE = cache
+
+
+def set_global_verify_hash(verify: bool):
+    global _VERIFY_HASH
+    _VERIFY_HASH = verify
+
+
+def _collect_duplicate_paths_first(all_paths: list):
+    assert _CACHE is not None, 'No global cache object set!'
+
     hash_collection = {}
     for path in all_paths:
         # Load hashes from cache
-        i_hash = ahash(cache, path, hash_size=8)
+        i_hash = ahash(_CACHE, path, hash_size=8)
         if i_hash not in hash_collection:
             hash_collection[i_hash] = [path]
         else:
@@ -23,7 +43,7 @@ def _collect_duplicate_paths_first(all_paths: list, cache: diskcache.FanoutCache
     return duplicates
 
 
-def _first_pass_filter(image_paths: list, cache: diskcache.FanoutCache, hash_verification: bool):
+def _first_pass_filter(image_path: Path):
     """
     Do a first pass with a high tolerance hash algorithm to allow for
     'easy' zero-distance clashes (aka false positives).
@@ -32,17 +52,19 @@ def _first_pass_filter(image_paths: list, cache: diskcache.FanoutCache, hash_ver
     :param cache:
     :return:
     """
-    for path in image_paths:
-        img_hash = file_digest(path) if hash_verification else None
-        # Results are stored into the cache
-        ahash(cache, path, hash_size=8, digest=img_hash)
+    assert _CACHE is not None, 'No global cache object set!'
+    img_hash = file_digest(image_path) if _VERIFY_HASH else None
+    # Results are stored into the cache
+    ahash(_CACHE, image_path, hash_size=8, digest=img_hash)
 
 
-def _collect_duplicate_paths_second(all_paths: list, cache: diskcache.FanoutCache):
+def _collect_duplicate_paths_second(all_paths: list):
+    assert _CACHE is not None, 'No global cache object set!'
+
     hash_collection = {}
     for path in all_paths:
         # Load hashes from cache
-        i_hash = phash(cache, path, hash_size=8, highfreq_factor=4)
+        i_hash = phash(_CACHE, path, hash_size=8, highfreq_factor=4)
         if i_hash not in hash_collection:
             hash_collection[i_hash] = [path]
         else:
@@ -52,11 +74,12 @@ def _collect_duplicate_paths_second(all_paths: list, cache: diskcache.FanoutCach
     return duplicates
 
 
-def _second_pass_filter(image_paths: list, cache: diskcache.FanoutCache, hash_verification: bool):
-    for path in image_paths:
-        img_hash = file_digest(path) if hash_verification else None
-        # Results are stored into the cache
-        phash(cache, path, hash_size=8, highfreq_factor=4, digest=img_hash)
+def _second_pass_filter(image_path: Path):
+    assert _CACHE is not None, 'No global cache object set!'
+
+    img_hash = file_digest(image_path) if _VERIFY_HASH else None
+    # Results are stored into the cache
+    phash(_CACHE, image_path, hash_size=8, highfreq_factor=4, digest=img_hash)
 
 
 def do_filter_images(path_list: list, recurse: bool, cache: diskcache.FanoutCache, hash_verification: bool):
@@ -67,20 +90,35 @@ def do_filter_images(path_list: list, recurse: bool, cache: diskcache.FanoutCach
     :param cache:
     :return:
     """
+    from ..scripts import _multiprocessing_filter_entry
+
     logger.info('Using cache directory: {}'.format(cache.directory))
+
+    set_global_cache_object(cache)
+    set_global_verify_hash(hash_verification)
+
+    # Single processing preparation steps
     images = collect_images(path_list, recurse)
 
-    # TODO; Replace with progress indicator
-    logger.info('Working..')
+    # Multiprocessing work
+    num_procs = os.cpu_count()
+    initializer = _multiprocessing_filter_entry
+    init_args = (cache.directory,hash_verification)
+    with Pool(processes=num_procs, initializer=initializer, initargs=init_args) as pool:
+        # TODO; Replace with progress indicator
+        logger.info('Working..')
 
-    # Here it might be possible to split work accross threads
-    _first_pass_filter(images, cache, hash_verification)
-    duplicate_images = _collect_duplicate_paths_first(images, cache)
-    # Flatten list of tuples
-    # A list is built because the next methods exhaust all elements from the iterator
-    duplicate_images = list(itertools.chain.from_iterable(duplicate_images))
+        # Here it might be possible to split work accross threads
+        logger.info("Starting _first_ pass")
+        pool.map(_first_pass_filter, images)
+        possible_duplicate_images = _collect_duplicate_paths_first(images)
+        # Flatten list of tuples
+        # A list is built because the next methods exhaust all elements from the iterator
+        # and we reuse the iterator
+        possible_duplicate_images = list(itertools.chain.from_iterable(possible_duplicate_images))
 
-    _second_pass_filter(duplicate_images, cache, hash_verification)
-    duplicate_images = _collect_duplicate_paths_second(duplicate_images, cache)
-    # List of tuples of images which resemble each other closely!
-    return duplicate_images
+        logger.info("Starting _second_ pass")
+        pool.map(_second_pass_filter, possible_duplicate_images)
+        actual_duplicate_images = _collect_duplicate_paths_second(possible_duplicate_images)
+        # List of tuples of images which resemble each other closely!
+        return actual_duplicate_images
