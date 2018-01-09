@@ -96,7 +96,7 @@ def _retrieve_output_path(dirs: dict, ratio: float, img_height: int, def_ratios:
 
     target_height_path = target_ratio_path.get(target_height, None)
     if not target_height_path:
-        target_height_path = Path(target_ratio_path['_base']) / ('w' + str(target_height))
+        target_height_path = Path(target_ratio_path['_base']) / ('h' + str(target_height))
         target_ratio_path[target_height] = target_height_path
         # Make sure this directory exists!
         target_height_path.mkdir(parents=True, exist_ok=True)
