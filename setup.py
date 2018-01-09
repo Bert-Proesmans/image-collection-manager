@@ -7,7 +7,7 @@ setup(
     py_modules=["scripts"],
     include_package_data=True,
     install_requires=[
-        'Click', 'imagehash', 'diskcache', 'Pillow',
+        'Click>=6.0.0,<7.0.0', 'imagehash>=4.0.0, <5.0.0', 'diskcache>=3.0.0, <4.0.0', 'Pillow==5.0.0',
     ],
     entry_points='''
         [console_scripts]
