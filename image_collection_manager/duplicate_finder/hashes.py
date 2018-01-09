@@ -16,18 +16,21 @@ _glob_phasher = None
 # The hashing functions take a PIL.Image object which is not desired as cache key.
 
 def _ahash_substitute(img_path: Path, **kwargs):
+    kwargs.pop('digest', None)
     img = Image.open(img_path)
     logger.debug("A-HASH {}", str(img_path))
     return imagehash.average_hash(img, **kwargs)
 
 
 def _dhash_substitute(img_path: Path, **kwargs):
+    kwargs.pop('digest', None)
     img = Image.open(img_path)
     logger.debug("D-HASH {}", str(img_path))
     return imagehash.dhash(img, **kwargs)
 
 
 def _phash_substitute(img_path: Path, **kwargs):
+    kwargs.pop('digest', None)
     img = Image.open(img_path)
     logger.debug("P-HASH {}", str(img_path))
     return imagehash.phash(img, **kwargs)

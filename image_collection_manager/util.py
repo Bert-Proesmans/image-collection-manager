@@ -1,6 +1,15 @@
 import mimetypes
 from collections import deque
 from pathlib import Path
+import hashlib
+
+
+def file_digest(path: Path):
+    hasher = hashlib.md5()
+    with open(path, 'rb') as f:
+        for b_chunk in iter(lambda: f.read(4096), b""):
+            hasher.update(b_chunk)
+    return hasher.hexdigest()
 
 
 def collect_images(path_list: list, recurse):

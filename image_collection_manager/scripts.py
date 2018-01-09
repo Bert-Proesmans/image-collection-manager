@@ -60,18 +60,20 @@ def cli(ctx):
 @click.argument('sources', nargs=-1,
                 type=click.Path(exists=True, file_okay=True, dir_okay=True, readable=True, resolve_path=True))
 @click.option('--recurse', '-r', is_flag=True, default=False, help='Pull images from subdirectories as well')
-@click.option('--dup_dir', '-d', default=None,
+@click.option('--hash-verify', is_flag=True, default=False, help='Takes the content-hash of each image into '
+                                                                 'consideration when memoizing perceptual hashes')
+@click.option('--dup-dir', '-d', default=None,
               type=click.Path(exists=True, file_okay=False, dir_okay=True, writable=True, resolve_path=True))
-@click.option('--cache_dir', type=click.Path(exists=False, file_okay=False, dir_okay=True, writable=True,
+@click.option('--cache-dir', type=click.Path(exists=False, file_okay=False, dir_okay=True, writable=True,
                                              readable=True, resolve_path=True))
 @click.pass_context
-def filter_duplicates(ctx, sources, recurse, dup_dir, cache_dir):
+def filter_duplicates(ctx, sources, recurse, hash_verify, dup_dir, cache_dir):
     with _setup_cache(cache_dir, tag_index=True) as cache:
         logger.info('Sources: {}'.format(', '.join(sources)))
         if dup_dir:
             logger.info('Duplicates folder: {}'.format(str(dup_dir)))
 
-        duplicates = do_filter_images(sources, recurse, cache)
+        duplicates = do_filter_images(sources, recurse, cache, hash_verify)
         logger.info('Found {} images which have at least one duplicate'.format(len(duplicates)))
         organize_duplicates(duplicates, dup_dir)
         logger.info('Filtering duplicates finished!')
